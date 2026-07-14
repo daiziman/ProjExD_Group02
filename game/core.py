@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from minipy3dr import Mesh, Vector3
 from minipy3dr.fps import Feature, FPSConfig, FPSGame, GameObject, Player  # noqa: F401
 
-from game.config import CONFIG
+from game.config import CONFIG, GRAVITY, JUMP_VELOCITY
 
 Color = tuple[int, int, int]
 
@@ -27,13 +27,17 @@ class Game(FPSGame):
 
     def __init__(self, map_data: list[str], features: Sequence[Feature] = (), title: str = "FPS") -> None:
         super().__init__(map_data=map_data, features=features, title=title, config=CONFIG)
-        # 照準のヒットマーカー(弾が当たった瞬間だけ照準の色が変わる)
         self._hit_marker = 0.0
         self.on("target_hit", self._on_any_target_hit)
-        # ベースのギミック: マップのBに爆発する樽、Cに遮蔽コンテナを置く
+
+        self._jump_offset = 0.0 
+        self._jump_velocity = 0.0
+        self._grounded = True
+        self._lean = 0.0
+        self._lean_dx = 0.0
+        self._lean_dz = 0.
         self._spawn_barrels()
         self._spawn_covers()
-        # 雰囲気作り: ガレキと天井パイプの配置、ランプの明滅を開始
         self._decorate_world()
         self._schedule_lamp_flicker()
 
@@ -41,6 +45,72 @@ class Game(FPSGame):
         """どこかのターゲットに弾が当たったら照準を一瞬光らせる。"""
         self._hit_marker = 0.18
 
+    def update_player_extra(self, dt: float) -> None:
+        """毎フレーム、基本の移動処理の後に呼ばれる: ジャンプとリーンを処理する。"""
+        self._update_jump(dt)
+        self._update_lean(dt)
+
+    def _update_jump(self, dt: float) -> None:
+        """Spaceで跳ぶ。空中では重力で落ちていき、着地すると再び跳べる。"""
+        app = self.app
+        if app.key("space") and self._grounded:
+            self._jump_velocity = JUMP_VELOCITY
+            self._grounded = False
+        self._jump_velocity -= GRAVITY * dt
+        self._jump_offset += self._jump_velocity * dt
+        if self._jump_offset <= 0.0:  # 着地
+            self._jump_offset = 0.0
+            self._jump_velocity = 0.0
+            self._grounded = True
+        pos = app.camera.position
+        app.camera.position = Vector3(pos.x, pos.y + self._jump_offset, pos.z)
+
+    def _update_lean(self, dt: float) -> None:
+        """Q/Eで体を左右に傾け壁から覗き込む。"""
+        app = self.app
+        target = (1.0 if app.key("e") else 0.0) - (1.0 if app.key("q") else 0.0)
+        self._lean += (target - self._lean) * min(1.0, dt * 9.0)
+
+        fx, fz = self.player.forward
+        rx, rz = -fz, fx  # 右方向ベクトル
+        lean_dx = rx * self._lean * 0.45
+        lean_dz = rz * self._lean * 0.45
+        dx = lean_dx - self._lean_dx
+        dz = lean_dz - self._lean_dz
+        pos = app.camera.position
+        if not self.blocked(pos.x + dx, pos.z + dz, 0.2):  # 壁にめり込まない
+            app.camera.position = Vector3(pos.x + dx, pos.y, pos.z + dz)
+            self._lean_dx = lean_dx
+            self._lean_dz = lean_dz
+        # rotation.z を yaw より内側(Rx  Ry  Rz)で適用するため　左右になるため　無r
+
+    def blocked(
+        self,
+        x: float,
+        z: float,
+        radius: float | None = None,
+        ignore: GameObject | None = None,
+    ) -> bool:
+        """壁と障害物の当たり判定。ただしジャンプで足が障害物の高さを越えていれば通す。
+        エンジン側が2Dの判定しかないのでたかさっをこうり
+        """
+        if radius is None:
+            radius = self.config.player_radius
+        # 壁は高さに関係なく通れない
+        for ox in (-radius, radius):
+            for oz in (-radius, radius):
+                if self.is_wall(x + ox, z + oz):
+                    return True
+        feet = getattr(self, "_jump_offset", 0.0)
+        for obstacle in self._obstacles:
+            if obstacle is ignore or not obstacle.alive:
+                continue
+            if math.hypot(obstacle.x - x, obstacle.z - z) < obstacle.radius + radius:
+                clear_height = obstacle.data.get("clear_height", 1.6)
+                if ignore is None and feet >= clear_height:
+                    continue  
+                return True
+        return False
 
     def build_wall(self, row: int, col: int, x: float, z: float) -> None:
         """壁1マスぶん: 標準の壁に、下端の巾木と上端の飾り帯を足す。"""
@@ -236,6 +306,7 @@ class Game(FPSGame):
 
         barrel = GameObject(self, parts, x, z, radius=0.34, name="barrel")
         barrel.data["exploded"] = False
+        barrel.data["clear_height"] = 1.1  
         return barrel
 
     def _on_barrel_hit(self, barrel: GameObject, damage: int) -> None:
@@ -261,6 +332,7 @@ class Game(FPSGame):
         for x, z in self.find_cells("C"):
             cover = self._make_container(x, z)
             cover.data["block_height"] = 1.05  # 弾を防ぐ高さ
+            cover.data["clear_height"] = 0.7  # 
             self.add_obstacle(cover)
 
     def _make_container(self, x: float, z: float) -> GameObject:

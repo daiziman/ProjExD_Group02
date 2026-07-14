@@ -15,7 +15,7 @@ def main() -> None:
     game = Game(
         map_data=MAP,
         features=FEATURES,
-        title="ProjExD Group",
+        title="ProjExD Group02",
     )
     game.run()
 if __name__ == "__main__":

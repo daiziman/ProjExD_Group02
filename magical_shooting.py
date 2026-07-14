@@ -2,7 +2,7 @@
 
 実行方法:
 
-    python main.py
+    python magical_shooting.py
 """
 
 import os
@@ -15,7 +15,7 @@ def main() -> None:
     game = Game(
         map_data=MAP,
         features=FEATURES,
-        title="ProjExD Group02",
+        title="Magical Shooting",
     )
     game.run()
 if __name__ == "__main__":

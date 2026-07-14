@@ -1,4 +1,4 @@
-# DOOM風3D FPSゲーム
+# Magical Shooting
 
 ## 実行環境の必要条件
 
@@ -21,7 +21,7 @@ C:\Users\Admin\anaconda3\envs\ProjExD\python.exe -m pip install "pygame>=2.5" "m
 プロジェクトのフォルダで、次のコマンドを実行するとゲームが始まります。
 
 ```bash
-python main.py
+python magical_shooting.py
 ```
 
 ## ゲームの概要
@@ -107,4 +107,4 @@ python main.py
 ## メモ
 
 * 敵、武器、アイテム、HUD、サウンドは、それぞれ独立した`Feature`として`game/features/`配下に分割している
-* 実行時のカレントディレクトリを`main.py`のあるフォルダへ移動するため、別の場所から実行しても音源を読み込める
+* 実行時のカレントディレクトリを`magical_shooting.py`のあるフォルダへ移動するため、別の場所から実行しても音源を読み込める
